@@ -37,7 +37,7 @@ n_class = 2;
 W_out = normrnd(0, 0.1, [total_filter, n_class]);
 B_out = zeros(n_class, 1);
 
-filter_fully_connected = normrnd(0, 0.1, [1,1,total_filter,n_class]);
+filter_fully_connected = normrnd(0, 0.1, [1,3,2,n_class]);
 
 %% Section 2: training
 % Note: 
@@ -86,7 +86,7 @@ for sentence_no = 1: total_sentences
         pool_res{i} = pool;
     end
 
-    z = vl_nnconcat(pool_res, 3);
+    z = vl_nnconcat(pool_res, 2);
     concat = z;
     
     % use of vl_nnconv function to act as fully connected layer
@@ -105,32 +105,30 @@ for sentence_no = 1: total_sentences
 %         my_t(:,1,:,1) = 0;
 %         my_t(:,1,:,1) = 0;
 %     end
-   
+    if t == 0
+        t= -1;
+    end
+       
     loss = vl_nnloss(output_softmax, t);
     disp(loss)
     
     % section 2.2 backward propagation and compute the derivatives
     if 4 > 3
-      dzdx3 = loss ;
-      dzdx2 = vl_nnconcat(pool_res, 3, dzdx3);
+      dzdx3 = vl_nnloss(output_softmax, t, 1);
+      [dzdx2, dzdw2] = vl_nnconv(z, filter_fully_connected, [], dzdx3);
+      dzdx1 = vl_nnconcat(pool_res, 2, dzdx2);
       for i = 1; length(filter_size)
-        disp(X)
-        disp(W_conv{i})
-        disp(B_conv{i})
-        % convolution operation
-        dzdx1 = vl_nnconv(X, cache{1, i}, B_conv{i}, dzdx2);
+          
+        % 1-max pooling operation
+        sizes = size(pool_res{i});
+        dzdx0 = vl_nnpool(pool_res{i}, [sizes(1), 1], dzdx1{i});
         
         % apply activation function :relu
-        dzdx0 = vl_nnrelu(cache{2, 1}, dzdx1);
-
-        % 1-max pooling operation
-        sizes = size(dzdx0);
-        pool_back = vl_nnpool(relu, [sizes(1), 1], dzdx0);
-
-        %importatnt: keeping the values for back propagation
-%         cache{2, 1} = relu;
-%         cache{1, i} = conv;
-%         pool_res{i} = pool;
+        dzdx = vl_nnrelu(cache{2, i}, dzdx0);
+        
+        % convolution operation
+        [a, b] = vl_nnconv(cache{1, i},W_conv{i}, [], dzdx);
+        
       end
     end
 end

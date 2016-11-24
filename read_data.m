@@ -12,7 +12,7 @@ separater = '::';
 words = [];
 data = cell(6000, 3);
 
-fid = fopen('train.txt', 'r');
+fid = fopen('train_small.txt', 'r');
 line = fgets(fid);
 
 ind = 1;
@@ -26,6 +26,13 @@ while ischar(line)
     
     s = attrs{2};
     w = strsplit(s);
+    word_len = length(w);
+    if(word_len <= 5)
+        for i = word_len:5
+            w{i} = 'and';
+        end
+    end
+        
     words = [words w];
     
     y = str2double(attrs{3});

@@ -10,12 +10,12 @@ clear; clc;
 [data, wordMap] = read_data();
 
 % section 1.2 Initialization with random numbers
-noof_wembed = 5;
+noof_wembed = 8;
 T = init_training(wordMap, noof_wembed);
 
 % section 1.3 Initialization of filters
-filter_sizes = [2,3,4];
-noof_filter_layer = 2;
+filter_sizes = [3,4,5];
+noof_filter_layer = 3;
 [W_conv, B_conv] = init_filters(filter_sizes, noof_filter_layer, noof_wembed);
 
 % section 1.4 init output layer
@@ -23,22 +23,22 @@ n_class = 2;
 [W_fc, B_fc] = init_fc_WB(filter_sizes, noof_filter_layer, n_class);
 
 %% Section 2: training
-training = [1 40];
+training = [1000 6000];
 total_sentences = training(2);
 
 % Setup MatConvNet.
 run matlab/vl_setupnn ;
 
-iterations = 10;
+iterations = 5;
 learning_rate = 0.001;
 
 while(iterations > 0)
     
     % Sum of gradient parameter initialization
-    [DZDW_conv, DZDW_conv_bias] = init_filtersDXDW(filter_sizes, noof_filter_layer, noof_wembed);
-
-    DZDW_output = zeros(1,length(filter_sizes));
-    DZDW_output_bias = zeros(n_class, 1);
+%     [DZDW_conv, DZDW_conv_bias] = init_filtersDXDW(filter_sizes, noof_filter_layer, noof_wembed);
+% 
+%     DZDW_output = zeros(1,length(filter_sizes));
+%     DZDW_output_bias = zeros(n_class, 1);
 
     for sentence_no = 1: total_sentences
 
@@ -49,7 +49,7 @@ while(iterations > 0)
         conv_cache = cell(length(filter_sizes));
         relu_cache = cell(length(filter_sizes));
         pool_cache = cell(length(filter_sizes));
-
+        %disp(sentence_no)
         for i = 1: length(filter_sizes)
             % convolution operation
             conv = vl_nnconv(X, W_conv{i}, B_conv{i});
@@ -83,22 +83,25 @@ while(iterations > 0)
         loss = vl_nnloss(output_softmax, t);
         classfied = output_softmax;
         
-        if output_softmax(:,:,1) > output_softmax(:,:,2) && t == 1
+        if t == 1
             classfied(:,:,1) = 1;
-            classfied(:,:,2) = 0;
-        elseif output_softmax(:,:,1) <= output_softmax(:,:,2) && t == 0
-            classfied(:,:,1) = 1;
-            classfied(:,:,2) = 0;
+            classfied(:,:,2) = 1;
         else
-            classfied(:,:,1) = 0;
+            classfied(:,:,1) = 1;
             classfied(:,:,2) = 1;
         end
         
-        dxdz_softmax = vl_nnsoftmax(conv_output, classfied);
+        if (t == 1 && output_softmax(:,:,1) > output_softmax(:,:,2)) || (t == 0 && output_softmax(:,:,1) <= output_softmax(:,:,2))
+            continue;
+        end
+         
+        
+        
         
         % section 2.2 backward propagation and compute the derivatives
-        dzdx_output = vl_nnloss(output_softmax, t, classfied);
-        [dzdx_outconv, dzdw_output, dzdw_output_bias] = vl_nnconv(concat, W_fc, B_fc, dxdz_softmax);
+        dzdx_output = vl_nnloss(output_softmax, 1, 1);
+        dxdz_softmax = vl_nnsoftmax(conv_output, classfied);
+        [dzdx_outconv, dzdw_output, dzdw_output_bias] = vl_nnconv(concat, W_fc, B_fc, classfied);
 
         dzdx_concat = vl_nnconcat(pool_cache, 2, dzdx_outconv);
 
@@ -118,38 +121,57 @@ while(iterations > 0)
             [dzdx_conv, dzdw_conv{i}, dzdw_conv_bias{i}] = vl_nnconv(X, W_conv{i}, B_conv{i}, dzdx_relu);
 
             % section 2.3 update the parameters
-            DZDW_conv{i} = DZDW_conv{i} + dzdw_conv{i};
-            DZDW_conv_bias{i} = DZDW_conv_bias{i} + dzdw_conv_bias{i};
+%             DZDW_conv{i} = DZDW_conv{i} + dzdw_conv{i};
+%             DZDW_conv_bias{i} = DZDW_conv_bias{i} + dzdw_conv_bias{i};
         end
 
         % section 2.3 update the parameters
-        DZDW_output = DZDW_output + dzdw_output;
-        DZDW_output_bias = DZDW_output_bias + dzdw_output_bias;
+%         DZDW_output = DZDW_output + dzdw_output;
+%         DZDW_output_bias = DZDW_output_bias + dzdw_output_bias;
+        
+        W_conv_old = W_conv;
+        B_conv_old = B_conv;
+        W_fc_old = W_fc;
+        B_fc_old = B_fc;
+
+        for i = 1: length(filter_sizes)      
+            % inint W with FW x FH x FC x K
+            W_conv{i} = W_conv{i} + (learning_rate * dzdw_conv{i});
+            B_conv{i} = B_conv{i} + (learning_rate * dzdw_conv_bias{i});
+        end
+
+        W_fc = W_fc + (learning_rate * dzdw_output);
+        B_fc = B_fc + (learning_rate * dzdw_output_bias);
+        
+        if isequal(W_conv, W_conv_old) && isequal(B_conv,B_conv_old) && isequal(W_fc, W_fc_old) && isequal(B_fc_old, B_fc)
+            iterations = 0;
+            break;
+        end
 
     end
     
-    W_conv_old = W_conv;
-    B_conv_old = B_conv;
-    W_fc_old = W_fc;
-    B_fc_old = B_fc;
-    
-    for i = 1: length(filter_sizes)      
-        % inint W with FW x FH x FC x K
-        W_conv{i} = W_conv{i} + (learning_rate * DZDW_conv{i});
-        B_conv{i} = B_conv{i} + (learning_rate *DZDW_conv_bias{i});
-    end
-    
-    W_fc = W_fc + (learning_rate * DZDW_output);
-    B_fc = B_fc + (learning_rate * DZDW_output_bias);
-    
-    if isequal(W_conv, W_conv_old) && isequal(B_conv,B_conv_old) && isequal(W_fc, W_fc_old) && isequal(B_fc_old, B_fc)
-        break;
-    end
-    
+%     W_conv_old = W_conv;
+%     B_conv_old = B_conv;
+%     W_fc_old = W_fc;
+%     B_fc_old = B_fc;
+%     
+%     for i = 1: length(filter_sizes)      
+%         % inint W with FW x FH x FC x K
+%         W_conv{i} = W_conv{i} + (learning_rate * DZDW_conv{i});
+%         B_conv{i} = B_conv{i} + (learning_rate * DZDW_conv_bias{i});
+%     end
+%     
+%     W_fc = W_fc + (learning_rate * DZDW_output);
+%     B_fc = B_fc + (learning_rate * DZDW_output_bias);
+%     
+%     if isequal(W_conv, W_conv_old) && isequal(B_conv,B_conv_old) && isequal(W_fc, W_fc_old) && isequal(B_fc_old, B_fc)
+%         break;
+%     end
+    disp(iterations)
     iterations = iterations - 1;
 end
 
-validation = [41 47];
+validation = [1 1000];
 start_validation = validation(1);
 end_validation = validation(2);
 

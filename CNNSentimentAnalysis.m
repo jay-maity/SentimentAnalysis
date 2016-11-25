@@ -1,21 +1,22 @@
 %% CMPT-741: sentiment analysis base on Convolutional Neural Network
 % author: Jay Maity
-% date: 15-11-2016
+% date: 24-11-2016
 
 clear; clc;
 
 %% Section 1: preparation before training
 
 % section 1.1 read file 'train.txt', load data and vocabulary by using function read_data()
-[data, wordMap] = read_data();
+[data] = load_training_data('train/train.txt');
+glove_mapping = glove_map('combined_embedding_0.mat');
 
 % section 1.2 Initialization with random numbers
 noof_wembed = 300;
-T = init_training(wordMap, noof_wembed);
+%T = init_training(wordMap, noof_wembed);
 
 % section 1.3 Initialization of filters
 filter_sizes = [2, 3, 4, 5];
-noof_filter_layer = 100;
+noof_filter_layer = 200;
 [W_conv, B_conv] = init_filters(filter_sizes, noof_filter_layer, noof_wembed);
 
 % section 1.4 init output layer
@@ -24,32 +25,35 @@ n_class = 2;
 
 %% Section 2: training
 training = [1000 6000];
-total_sentences = training(2);
+start_train = training(1);
+end_train = training(2);
 
 % Setup MatConvNet.
-run matlab/vl_setupnn ;
+run matconvnet/matlab/vl_setupnn ;
 
-iterations = 40;
-learning_rate = 0.001;
+iterations = 1;
+learning_rate = 0.1;
 
 while(iterations > 0)
-    
-    % Sum of gradient parameter initialization
-%     [DZDW_conv, DZDW_conv_bias] = init_filtersDXDW(filter_sizes, noof_filter_layer, noof_wembed);
-% 
-%     DZDW_output = zeros(1,length(filter_sizes));
-%     DZDW_output_bias = zeros(n_class, 1);
 
-    for sentence_no = 1: total_sentences
+    for sentence_no = start_train: end_train
 
+        row = data(sentence_no);
+        index = data(sentence_no,1);
+        index = index{1};
+        sentence = data(sentence_no,2);
+        sentence = sentence{1};
+        result = data(sentence_no,3);
+        result = result{1};
+        
         % Get training set and result
-        [X, result] = get_word_indexes(sentence_no, T, data, wordMap);
+        [X] = get_word_embeddings(sentence, noof_wembed, glove_mapping);
 
         % Setting the structure to cache backpropagation output of neurons
         conv_cache = cell(length(filter_sizes));
         relu_cache = cell(length(filter_sizes));
         pool_cache = cell(1, length(filter_sizes));
-        %disp(sentence_no)
+
         for i = 1: length(filter_sizes)
             % convolution operation
             conv = vl_nnconv(X, W_conv{i}, B_conv{i});
@@ -76,11 +80,7 @@ while(iterations > 0)
         t_arr = data(sentence_no, 3);
         t = t_arr{1};
 
-%         if t == 0
-%             t= -1;
-%         end
-
-        loss = vl_nnloss(output_softmax, t);
+        %loss = vl_nnloss(output_softmax, t);
         classfied = output_softmax;
         
         if (t == 1 && output_softmax(:,:,1) > output_softmax(:,:,2)) || (t == 0 && output_softmax(:,:,1) <= output_softmax(:,:,2))
@@ -96,8 +96,6 @@ while(iterations > 0)
         end
         
         % section 2.2 backward propagation and compute the derivatives
-        dzdx_output = vl_nnloss(output_softmax, 1, 1);
-        dxdz_softmax = vl_nnsoftmax(conv_output, classfied);
         [dzdx_outconv, dzdw_output, dzdw_output_bias] = vl_nnconv(concat, W_fc, B_fc, classfied);
 
         dzdx_concat = vl_nnconcat(pool_cache, 3, dzdx_outconv);
@@ -116,15 +114,7 @@ while(iterations > 0)
 
             % convolution operation
             [dzdx_conv, dzdw_conv{i}, dzdw_conv_bias{i}] = vl_nnconv(X, W_conv{i}, B_conv{i}, dzdx_relu);
-
-            % section 2.3 update the parameters
-%             DZDW_conv{i} = DZDW_conv{i} + dzdw_conv{i};
-%             DZDW_conv_bias{i} = DZDW_conv_bias{i} + dzdw_conv_bias{i};
         end
-
-        % section 2.3 update the parameters
-%         DZDW_output = DZDW_output + dzdw_output;
-%         DZDW_output_bias = DZDW_output_bias + dzdw_output_bias;
         
         W_conv_old = W_conv;
         B_conv_old = B_conv;
@@ -147,85 +137,13 @@ while(iterations > 0)
 
     end
     
-%     W_conv_old = W_conv;
-%     B_conv_old = B_conv;
-%     W_fc_old = W_fc;
-%     B_fc_old = B_fc;
-%     
-%     for i = 1: length(filter_sizes)      
-%         % inint W with FW x FH x FC x K
-%         W_conv{i} = W_conv{i} + (learning_rate * DZDW_conv{i});
-%         B_conv{i} = B_conv{i} + (learning_rate * DZDW_conv_bias{i});
-%     end
-%     
-%     W_fc = W_fc + (learning_rate * DZDW_output);
-%     B_fc = B_fc + (learning_rate * DZDW_output_bias);
-%     
-%     if isequal(W_conv, W_conv_old) && isequal(B_conv,B_conv_old) && isequal(W_fc, W_fc_old) && isequal(B_fc_old, B_fc)
-%         break;
-%     end
     disp(iterations)
     iterations = iterations - 1;
 end
 
-validation = [1 1000];
-start_validation = validation(1);
-end_validation = validation(2);
-
-correct = 0;
-for sentence_no = start_validation: end_validation
-    % Get training set and result
-    [X, result] = get_word_indexes(sentence_no, T, data, wordMap);
-    predicted_result = predict(X, W_conv, B_conv, W_fc, B_fc, filter_sizes);
-    
-    if predicted_result == result{1}
-        correct = correct + 1;
-    end
-end
-
-disp(correct)
+save('parameters/wparameters.mat','W_conv','B_conv', 'W_fc', 'B_fc', 'filter_sizes', 'noof_wembed');
 
 
-function result = predict(X, W_conv, B_conv, W_fc, B_fc, filter_sizes)
-
-    pool_cache = cell(length(filter_sizes));
-    for i = 1: length(filter_sizes)
-        % convolution operation
-        conv = vl_nnconv(X, W_conv{i}, B_conv{i});
-        
-        % apply activation function :relu
-        relu = vl_nnrelu(conv);
-        
-        % 1-max pooling operation
-        sizes = size(conv);
-        pool_cache{i} = vl_nnpool(relu, [sizes(1), 1]);
-     end
-
-    concat = vl_nnconcat(pool_cache, 3);
-    % use of vl_nnconv function to act as fully connected layer
-    % https://github.com/vlfeat/matconvnet/issues/185
-    conv_output = vl_nnconv(concat, W_fc, B_fc);
-    output_softmax = vl_nnsoftmax(conv_output);
-    
-    if output_softmax(:,:,1) > output_softmax(:,:,2)
-        result = 1;
-    else
-        result = 0;
-    end
-end
-
-function [T] = init_training(wordMap, noof_wembed)
-% Initialize training data with some initial value
-%       wordMap(map), wordMap for all the words
-% return: 
-%       T(cell), matrix for all initial training input
-
-    total_words = length(wordMap);
-
-    % random sample from normal distribution
-    % with mean = 0 , variance = 0.01
-    T = normrnd(0, 0.1, [total_words, noof_wembed]);
-end
 
 function [W_conv, B_conv] = init_filters(filter_sizes, noof_filter_layer, noof_wembed)
 % Initialize training data with some initial value
@@ -248,28 +166,6 @@ function [W_conv, B_conv] = init_filters(filter_sizes, noof_filter_layer, noof_w
     end
 end
 
-function [DZDW_conv, DZDW_conv_bias] = init_filtersDXDW(filter_sizes, noof_filter_layer, noof_wembed)
-% Initialize gradent sum
-%       filter_sizes(array), All the filter needs to be applied on input
-%       layer
-%       noof_filters, No of layers for each filter
-% return: 
-%       DZDW_conv(cell), Initial weights to be applied on filters
-%       DZDW_conv_bias(cell), Initial biases to be applied on filters
-
-    DZDW_conv = cell(length(filter_sizes), 1);
-    DZDW_conv_bias = cell(length(filter_sizes), 1);
-    
-    for i = 1: length(filter_sizes)
-        % get filter size
-        f = filter_sizes(i);
-        
-        % inint W with FW x FH x FC x K
-        DZDW_conv{i} = zeros(f, noof_wembed, 1, noof_filter_layer);
-        DZDW_conv_bias{i} = zeros(noof_filter_layer, 1);
-    end
-end
-
 function [W_fc, B_fc] = init_fc_WB(filter_sizes, noof_filter_layer, n_class)
 % Initialize fully connected output layer
 %       filter_sizes(array), All the filter needs to be applied on input
@@ -282,26 +178,4 @@ function [W_fc, B_fc] = init_fc_WB(filter_sizes, noof_filter_layer, n_class)
 
     W_fc = normrnd(0, 0.1, [1,1, noof_filter_layer*length(filter_sizes), n_class]);
     B_fc = zeros(1, n_class);
-end
-
-function [X, result] = get_word_indexes(sentence_no, T, data, wordMap)
-% Get word indexes from master data
-%       sentence_no(int), Sentence index (id)
-%       data(cell), 1st column -> sentence id, 2nd column -> words, 3rd column -> label
-%       T(cell), Initialized training set
-%       wordMap(map), map to index for each number
-% return: 
-%       X(cell), matrix for training for one sentence
-%       result(int), actual result
-    
-    % Get all words in the sentence
-    word_indexes = [];
-    word_cell = data(sentence_no, 2);
-    word_texts = word_cell{1};
-    for word_index = 1:length(word_texts)
-        text = word_texts(word_index);
-        word_indexes(word_index) = wordMap(text{1});
-    end
-    result = data(sentence_no, 3);
-    X = T(word_indexes, :);
 end

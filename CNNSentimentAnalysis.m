@@ -10,12 +10,12 @@ clear; clc;
 [data, wordMap] = read_data();
 
 % section 1.2 Initialization with random numbers
-noof_wembed = 8;
+noof_wembed = 300;
 T = init_training(wordMap, noof_wembed);
 
 % section 1.3 Initialization of filters
-filter_sizes = [3,4,5];
-noof_filter_layer = 3;
+filter_sizes = [2, 3, 4, 5];
+noof_filter_layer = 100;
 [W_conv, B_conv] = init_filters(filter_sizes, noof_filter_layer, noof_wembed);
 
 % section 1.4 init output layer
@@ -29,7 +29,7 @@ total_sentences = training(2);
 % Setup MatConvNet.
 run matlab/vl_setupnn ;
 
-iterations = 5;
+iterations = 40;
 learning_rate = 0.001;
 
 while(iterations > 0)
@@ -48,7 +48,7 @@ while(iterations > 0)
         % Setting the structure to cache backpropagation output of neurons
         conv_cache = cell(length(filter_sizes));
         relu_cache = cell(length(filter_sizes));
-        pool_cache = cell(length(filter_sizes));
+        pool_cache = cell(1, length(filter_sizes));
         %disp(sentence_no)
         for i = 1: length(filter_sizes)
             % convolution operation
@@ -67,7 +67,7 @@ while(iterations > 0)
             pool_cache{i} = pool;
         end
 
-        concat = vl_nnconcat(pool_cache, 2);
+        concat = vl_nnconcat(pool_cache, 3);
         % use of vl_nnconv function to act as fully connected layer
         % https://github.com/vlfeat/matconvnet/issues/185
         conv_output = vl_nnconv(concat, W_fc, B_fc);
@@ -83,27 +83,24 @@ while(iterations > 0)
         loss = vl_nnloss(output_softmax, t);
         classfied = output_softmax;
         
-        if t == 1
-            classfied(:,:,1) = 1;
-            classfied(:,:,2) = 1;
-        else
-            classfied(:,:,1) = 1;
-            classfied(:,:,2) = 1;
-        end
-        
         if (t == 1 && output_softmax(:,:,1) > output_softmax(:,:,2)) || (t == 0 && output_softmax(:,:,1) <= output_softmax(:,:,2))
             continue;
         end
          
-        
-        
+        if t == 1
+            classfied(:,:,1) = 1;
+            classfied(:,:,2) = -1;
+        else
+            classfied(:,:,1) = -1;
+            classfied(:,:,2) = 1;
+        end
         
         % section 2.2 backward propagation and compute the derivatives
         dzdx_output = vl_nnloss(output_softmax, 1, 1);
         dxdz_softmax = vl_nnsoftmax(conv_output, classfied);
         [dzdx_outconv, dzdw_output, dzdw_output_bias] = vl_nnconv(concat, W_fc, B_fc, classfied);
 
-        dzdx_concat = vl_nnconcat(pool_cache, 2, dzdx_outconv);
+        dzdx_concat = vl_nnconcat(pool_cache, 3, dzdx_outconv);
 
         dzdw_conv  = cell(length(filter_sizes), 1);
         dzdw_conv_bias  = cell(length(filter_sizes), 1);
@@ -204,7 +201,7 @@ function result = predict(X, W_conv, B_conv, W_fc, B_fc, filter_sizes)
         pool_cache{i} = vl_nnpool(relu, [sizes(1), 1]);
      end
 
-    concat = vl_nnconcat(pool_cache, 2);
+    concat = vl_nnconcat(pool_cache, 3);
     % use of vl_nnconv function to act as fully connected layer
     % https://github.com/vlfeat/matconvnet/issues/185
     conv_output = vl_nnconv(concat, W_fc, B_fc);
@@ -283,8 +280,8 @@ function [W_fc, B_fc] = init_fc_WB(filter_sizes, noof_filter_layer, n_class)
 %       W_fc(cell), Initial weights to be applied as convolution layer
 %       B_fc(cell), Initial biases to be applied as convolution layer
 
-    W_fc = normrnd(0, 0.1, [1,length(filter_sizes), noof_filter_layer, n_class]);
-    B_fc = zeros(n_class, 1);
+    W_fc = normrnd(0, 0.1, [1,1, noof_filter_layer*length(filter_sizes), n_class]);
+    B_fc = zeros(1, n_class);
 end
 
 function [X, result] = get_word_indexes(sentence_no, T, data, wordMap)

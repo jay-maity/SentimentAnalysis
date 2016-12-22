@@ -1,4 +1,4 @@
-function [data, wordMap] = read_data()
+function [data, wordMap] = read_data(filename)
 % CMPT-741 example code for: reading training data and building vocabulary.
 % NOTE: reading testing data is similar, but no need to build the vocabulary.
 %
@@ -10,9 +10,9 @@ headLine = true;
 separater = '::';
 
 words = [];
-data = cell(6000, 3);
+data = cell(1, 3);
 
-fid = fopen('train_small.txt', 'r');
+fid = fopen(filename, 'r');
 line = fgets(fid);
 
 ind = 1;
